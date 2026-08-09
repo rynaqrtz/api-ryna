@@ -338,7 +338,7 @@ Contoh respons `spotify`:
 | `GET /api/ai/deepai` | `prompt` wajib (kecuali `action=models`), `model` (default `standard`) | `/api/ai/deepai?prompt=halo&model=llama-4-scout` |
 | `GET /api/ai/deepai?action=models` | — | Daftar model terkini dari provider |
 | `GET /api/ai/surfsense` | `prompt` wajib | `/api/ai/surfsense?prompt=halo` |
-| `GET /api/ai/omegatech` | `message` wajib, `sessionId` (opsional, lanjutkan percakapan, maks 5 pesan per sesi) | `/api/ai/omegatech?message=halo` |
+| `GET /api/ai/quillbot` | `message` wajib, `sessionId` (opsional, lanjutkan percakapan, maks 5 pesan per sesi) | `/api/ai/quillbot?message=halo` |
 
 ```bash
 curl "https://api.rynaqrtz.my.id/api/ai/deepseek?prompt=halo"
@@ -451,7 +451,7 @@ Contoh respons:
 }
 ```
 
-### `GET /api/tools/omegatech-transcribe`
+### `GET /api/tools/transcribe-v2`
 
 Alternatif `/api/tools/transcribe` lewat provider berbeda (Omegatech). Berguna sebagai fallback kalau Groq sedang limit. Hanya menerima URL audio publik, tidak menerima upload file langsung.
 
@@ -462,7 +462,7 @@ Alternatif `/api/tools/transcribe` lewat provider berbeda (Omegatech). Berguna s
 | `scenario` | tidak | Default `auto` |
 
 ```bash
-curl "https://api.rynaqrtz.my.id/api/tools/omegatech-transcribe?audioUrl=https://contoh.com/audio.mp3&languageCode=ja"
+curl "https://api.rynaqrtz.my.id/api/tools/transcribe-v2?audioUrl=https://contoh.com/audio.mp3&languageCode=ja"
 ```
 
 Contoh respons:
@@ -577,6 +577,35 @@ Contoh respons:
 
 `sensei_audio_base64` adalah audio MP3 dalam bentuk base64, siap dipakai langsung sebagai `data:audio/mp3;base64,...`.
 
+### `GET /api/ai/sensei-chat`
+
+Versi teks dari AI Sensei — tanpa perlu kirim audio. Cocok untuk chat biasa, misalnya bertanya arti/terjemahan suatu kata ("bahasa Jepangnya makan apa?"). Balasan tetap disertai audio TTS.
+
+| Parameter | Wajib | Keterangan |
+|---|---|---|
+| `message` | ya | Pertanyaan atau pesan untuk Sensei |
+| `level` | tidak | `pemula`/`menengah`/`mahir`, default `pemula` |
+
+```bash
+curl "https://api.rynaqrtz.my.id/api/ai/sensei-chat?message=bahasa+jepangnya+makan+apa&level=pemula"
+```
+
+Contoh respons:
+```json
+{
+  "status": true,
+  "creator": "rynaqrtz",
+  "result": {
+    "user_message": "bahasa jepangnya makan apa",
+    "sensei_text": "「食べる」(taberu) artinya makan. Contoh: 朝ごはんを食べます (asagohan wo tabemasu) = makan sarapan.",
+    "translation": "\"Taberu\" berarti makan...",
+    "romaji": "Taberu wa taberu to iu imidesu...",
+    "sensei_audio_base64": "SUQzBAAAAAAAI1RTU0U...",
+    "audio_format": "mp3"
+  }
+}
+```
+
 ### `GET /api/tools/screenshot`
 
 Screenshot fullpage sebuah website (dark mode, cookie banner disembunyikan).
@@ -599,6 +628,34 @@ Contoh respons:
   }
 }
 ```
+
+### `POST /api/tools/upload`
+
+Upload gambar. File disimpan lewat penyedia pihak ketiga, tapi URL yang dikembalikan selalu memakai domain sendiri (`api.rynaqrtz.my.id/img/...`) — bukan domain penyedia aslinya. Setiap kali URL itu diakses, server mengambilkan gambarnya ulang dari sumber asli, jadi URL tetap sama selamanya meskipun penyedia aslinya berubah.
+
+| Parameter | Wajib | Keterangan |
+|---|---|---|
+| `file` | ya | File gambar, `multipart/form-data`. Maks 20MB |
+
+```bash
+curl -X POST "https://api.rynaqrtz.my.id/api/tools/upload" \
+  -F "file=@foto.jpg"
+```
+
+Contoh respons:
+```json
+{
+  "status": true,
+  "creator": "rynaqrtz",
+  "result": {
+    "url": "https://api.rynaqrtz.my.id/img/a1b2c3d4e5f6",
+    "fileId": "xxxxxx",
+    "size": 123456
+  }
+}
+```
+
+`result.url` adalah link permanen yang bisa langsung dipakai sebagai `src` gambar di mana saja.
 
 ## Maker
 
