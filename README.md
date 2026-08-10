@@ -2,15 +2,16 @@
 
 <img src="https://cdn.zass.in/5jTNKGrL1C.gif" alt="Ryna Portfolio Banner" width="100%" />
 
-REST API publik berisi scraper anime, donghua, & film/series, downloader media sosial, chat AI, tools audio (speech-to-text, text-to-speech), dan maker gambar.
+REST API berisi scraper anime, donghua, & film/series, downloader media sosial, chat AI, tools audio (speech-to-text, text-to-speech), dan maker gambar.
 
 - **Base URL:** `https://api.rynaqrtz.my.id`
 - **Format response:** JSON (kecuali endpoint yang secara eksplisit disebut mengembalikan file/gambar/audio)
-- **Autentikasi:** tidak ada, API publik
-- **Rate limit:** 30 request/menit per IP
+- **Autentikasi:** Wajib API key untuk semua endpoint `/api/*`. Endpoint sistem (`/`, `/health`) tetap publik tanpa key.
+- **Rate limit:** Sesuai tier API key (lihat [Autentikasi](#autentikasi))
 
 ## Daftar Isi
 
+- [Autentikasi](#autentikasi)
 - [Format Response](#format-response)
 - [Rate Limit](#rate-limit)
 - [Endpoint Sistem](#endpoint-sistem)
@@ -21,6 +22,39 @@ REST API publik berisi scraper anime, donghua, & film/series, downloader media s
 - [AI](#ai)
 - [Tools](#tools)
 - [Maker](#maker)
+
+## Autentikasi
+
+Semua endpoint `/api/*` wajib menyertakan API key. Kirim lewat salah satu cara berikut:
+
+```bash
+curl -H "X-API-Key: ryna_xxxxxxxxxxxx" "https://api.rynaqrtz.my.id/api/anime/samehadaku?action=home"
+```
+
+```bash
+curl "https://api.rynaqrtz.my.id/api/anime/samehadaku?action=home&apikey=ryna_xxxxxxxxxxxx"
+```
+
+Tanpa API key, request ditolak dengan HTTP 401:
+```json
+{
+  "status": false,
+  "creator": "rynaqrtz",
+  "message": "API key wajib disertakan (header X-API-Key atau query ?apikey=)"
+}
+```
+
+API key hanya dapat dibuat oleh admin. Hubungi admin untuk mendapatkan key.
+
+### Tier
+
+| Tier | Limit |
+|---|---|
+| `free` | 30 request / menit |
+| `pro` | 300 request / menit |
+| `max` | 3000 request / menit |
+
+Melebihi limit tier, server merespons HTTP 429 dengan header `Retry-After` (detik).
 
 ## Format Response
 
@@ -44,14 +78,30 @@ Gagal:
 
 ## Rate Limit
 
-30 request per menit per IP. Melebihi batas ini server merespons **HTTP 429** dengan header `Retry-After` (detik).
+Ada 2 lapis pembatasan:
+1. **Per IP** (lapisan dasar, semua endpoint termasuk sistem): 30 request/menit.
+2. **Per API key** (lapisan utama untuk endpoint `/api/*`): sesuai tier — lihat [Autentikasi](#autentikasi).
 
 ```bash
-curl -i "https://api.rynaqrtz.my.id/api/anime/samehadaku?action=home"
+curl -i -H "X-API-Key: ryna_xxxxxxxxxxxx" "https://api.rynaqrtz.my.id/api/anime/samehadaku?action=home"
 # kalau kena limit:
 # HTTP/1.1 429 Too Many Requests
 # Retry-After: 42
 ```
+
+### Antrian (endpoint AI & audio)
+
+Endpoint yang memanggil provider AI/audio pihak ketiga (`sensei`, `sensei-chat`, `transcribe`, `transcribe-v2`, `tts`) dibatasi maksimal 8 request diproses bersamaan. Kalau semua slot terisi dan antrian tunggu juga penuh, server merespons **HTTP 503**:
+
+```json
+{
+  "status": false,
+  "creator": "rynaqrtz",
+  "message": "Server sedang sibuk, coba lagi dalam beberapa saat"
+}
+```
+
+Ini normal saat traffic tinggi (mis. banyak murid memakai fitur AI Sensei bersamaan) — coba ulang beberapa saat kemudian.
 
 ## Endpoint Sistem
 
@@ -525,16 +575,16 @@ Contoh respons `mode=text-to-text`:
 
 ### `POST /api/ai/sensei`
 
-Audio ucapan murid ditranskrip, dijawab AI dalam bahasa Jepang, lalu dikirim balik sebagai teks + terjemahan + romaji + audio, dalam satu request.
+Audio ucapan murid diproses langsung oleh Gemini 2.5 Flash multimodal (transkrip dan balasan dihasilkan dalam satu pemanggilan AI), lalu dikirim balik sebagai teks + terjemahan + romaji + audio, dalam satu request.
 
 | Parameter | Wajib | Keterangan |
 |---|---|---|
-| `audio` | salah satu wajib | File audio ucapan murid |
-| `url` | salah satu wajib | URL audio publik, dipakai kalau tidak kirim file |
+| `audio` | ya | File audio ucapan murid |
 | `level` | tidak | `pemula`/`menengah`/`mahir`, default `pemula` |
 
 ```bash
 curl -X POST "https://api.rynaqrtz.my.id/api/ai/sensei" \
+  -H "X-API-Key: ryna_xxxxxxxxxxxx" \
   -F "audio=@ucapan.webm" \
   -F "level=pemula"
 ```
@@ -547,6 +597,7 @@ async function askSensei(blob, level = 'pemula') {
 
   const res = await fetch('https://api.rynaqrtz.my.id/api/ai/sensei', {
     method: 'POST',
+    headers: { 'X-API-Key': 'ryna_xxxxxxxxxxxx' },
     body: form
   });
   const data = await res.json();
@@ -565,17 +616,18 @@ Contoh respons:
   "status": true,
   "creator": "rynaqrtz",
   "result": {
-    "user_text": "わたし わ がくせい です",
     "sensei_text": "こんにちは！「わたしは学生です」が正しい言い方ですよ。頑張ってくださいね！",
     "translation": "Halo! Ucapan yang benar adalah \"watashi wa gakusei desu\". Semangat ya!",
     "romaji": "Kon'nichiwa! Watashi wa gakusei desu ga tadashii iikata desu yo. Ganbatte kudasai ne!",
     "sensei_audio_base64": "SUQzBAAAAAAAI1RTU0U...",
-    "audio_format": "mp3"
+    "audio_format": "mp3",
+    "chat_provider": "gemini",
+    "tts_provider": "google-translate"
   }
 }
 ```
 
-`sensei_audio_base64` adalah audio MP3 dalam bentuk base64, siap dipakai langsung sebagai `data:audio/mp3;base64,...`.
+`sensei_audio_base64` adalah audio MP3 dalam bentuk base64, siap dipakai langsung sebagai `data:audio/mp3;base64,...`. Endpoint ini tidak mengembalikan transkrip literal ucapan murid (`user_text`) karena Gemini memproses audio langsung menjadi jawaban.
 
 ### `GET /api/ai/sensei-chat`
 
